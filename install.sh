@@ -1,7 +1,71 @@
-#!/bin/sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-mkdir -p ~/Library/Application\ Support/com.fournova.Tower3/CompareTools
+# ── Destinations ────────────────────────────────────────────────────────────
+DEST="$HOME/Library/Application Support/com.fournova.Tower3/CompareTools"
+SCRIPTS_DEST="$DEST/scripts"
 
-cp {CompareTools.plist,vscode.sh} ~/Library/Application\ Support/com.fournova.Tower3/CompareTools/
+# ── Safety: dry-run by default ───────────────────────────────────────────────
+DRY_RUN=true
+[[ "${1:-}" == "--run" ]] && DRY_RUN=false
 
-echo "=> Setup completed! Now restart Tower and go to Preferences -> Git Config -> Select 'Visual Studio Code' for both Diff tool and Merge tool."
+if $DRY_RUN; then
+  echo "⚠  Dry-run mode — nothing will be moved. Pass --run to execute."
+  echo ""
+fi
+
+# ── Move helper ──────────────────────────────────────────────────────────────
+move_file() {
+  local src="$1"
+  local dest_dir="$2"
+
+  if [[ ! -f "$src" ]]; then
+    echo "  ✗ missing:        $src" >&2
+    return
+  fi
+
+  if [[ -e "$dest_dir/$(basename "$src")" ]]; then
+    echo "  ⚠ already exists: $dest_dir/$(basename "$src") — skipped" >&2
+    return
+  fi
+
+  if $DRY_RUN; then
+    echo "  → [dry-run] $src  ➜  $dest_dir/"
+  else
+    mkdir -p "$dest_dir"
+    mv "$src" "$dest_dir/"
+    echo "  ✓ moved: $src  ➜  $dest_dir/"
+  fi
+}
+
+# ── Shell scripts → scripts/ subfolder ──────────────────────────────────────
+echo "── Shell scripts ── (*.sh → $SCRIPTS_DEST)"
+shopt -s nullglob
+sh_files=( *.sh )
+if (( ${#sh_files[@]} == 0 )); then
+  echo "  (none found)"
+else
+  for f in "${sh_files[@]}"; do
+    move_file "$f" "$SCRIPTS_DEST"
+  done
+fi
+
+# ── All other project files → root CompareTools folder ──────────────────────
+echo ""
+echo "── Other files ── (*.plist, etc. → $DEST)"
+other_files=( *.plist )          # extend this array for other types if needed
+if (( ${#other_files[@]} == 0 )); then
+  echo "  (none found)"
+else
+  for f in "${other_files[@]}"; do
+    move_file "$f" "$DEST"
+  done
+fi
+
+# ── Summary ──────────────────────────────────────────────────────────────────
+echo ""
+if $DRY_RUN; then
+  echo "Dry-run complete. Inspect the output above, then re-run with --run."
+else
+  echo "Done."
+fi
