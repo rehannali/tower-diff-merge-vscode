@@ -12,7 +12,7 @@ usage() {
 Usage: bash $SELF [--run] <command> [target]
 
 Commands:
-  install               Move all files to target (default, skips existing)
+  install               Copy all files to target (skips existing)
   replace               Overwrite all already-installed files
   replace <file>        Overwrite a single file (e.g. replace vscode.sh)
   remove                Remove all installed files from target
@@ -23,11 +23,11 @@ Flags:
 
 Examples:
   bash $SELF                          # dry-run install all
-  bash $SELF --run install            # install all
-  bash $SELF --run replace            # replace all
-  bash $SELF --run replace vscode.sh  # replace one
-  bash $SELF --run remove             # remove all
-  bash $SELF --run remove vscode.sh   # remove one
+  bash $SELF --run install            # copy all files to target
+  bash $SELF --run replace            # overwrite all
+  bash $SELF --run replace vscode.sh  # overwrite one
+  bash $SELF --run remove             # remove all from target
+  bash $SELF --run remove vscode.sh   # remove one from target
 EOF
   exit 0
 }
@@ -54,13 +54,12 @@ fi
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-# Resolve which destination dir a source file belongs to
 dest_for() {
   local f="$1"
   [[ "$f" == *.sh ]] && echo "$SCRIPTS_DEST" || echo "$DEST"
 }
 
-do_move() {
+do_copy() {
   local src="$1" dest_dir="$2"
   local dest="$dest_dir/$(basename "$src")"
 
@@ -72,11 +71,11 @@ do_move() {
   fi
 
   if $DRY_RUN; then
-    echo "  → [dry-run] move   $src  ➜  $dest_dir/"
+    echo "  → [dry-run] copy   $src  ➜  $dest_dir/"
   else
     mkdir -p "$dest_dir"
-    mv "$src" "$dest_dir/"
-    echo "  ✓ moved:           $src  ➜  $dest_dir/"
+    cp "$src" "$dest_dir/"
+    echo "  ✓ copied:          $src  ➜  $dest_dir/"
   fi
 }
 
@@ -94,14 +93,13 @@ do_replace() {
     echo "  → [dry-run] replace ($status)  $src  ➜  $dest_dir/"
   else
     mkdir -p "$dest_dir"
-    mv "$src" "$dest_dir/"
+    cp "$src" "$dest_dir/"
     echo "  ✓ replaced:        $src  ➜  $dest_dir/"
   fi
 }
 
 do_remove() {
-  local target_file="$1"
-  local dest_dir="$2"
+  local target_file="$1" dest_dir="$2"
   local dest="$dest_dir/$(basename "$target_file")"
 
   if [[ ! -e "$dest" ]]; then
@@ -142,46 +140,38 @@ patch_plist() {
   done <<< "$refs"
 }
 
-# ── Collect all managed files ─────────────────────────────────────────────────
+# ── Collect managed files ─────────────────────────────────────────────────────
 shopt -s nullglob
 all_sh=( *.sh )
 all_other=( *.plist )
 
-# Remove self from .sh list
 managed_sh=()
 for f in "${all_sh[@]}"; do
   [[ "$f" == "$SELF" ]] && { echo "  ⊘ skipped self:    $f"; continue; }
   managed_sh+=("$f")
 done
 
-all_files=( "${managed_sh[@]}" "${all_other[@]}" )
-
 # ── Command dispatch ──────────────────────────────────────────────────────────
 case "$COMMAND" in
 
-  # ── Install ────────────────────────────────────────────────────────────────
   install)
     echo "── Installing all files ─────────────────────────────────────────────"
     [[ ${#managed_sh[@]} -gt 0 ]] && {
       echo "   Scripts → $SCRIPTS_DEST"
-      for f in "${managed_sh[@]}"; do do_move "$f" "$SCRIPTS_DEST"; done
+      for f in "${managed_sh[@]}"; do do_copy "$f" "$SCRIPTS_DEST"; done
     }
     patch_plist "CompareTools.plist"
     echo ""
     echo "   Other → $DEST"
-    for f in "${all_other[@]}"; do do_move "$f" "$DEST"; done
+    for f in "${all_other[@]}"; do do_copy "$f" "$DEST"; done
     ;;
 
-  # ── Replace ────────────────────────────────────────────────────────────────
   replace)
     if [[ -n "$TARGET" ]]; then
-      # Single file
       echo "── Replacing single file: $TARGET ──────────────────────────────────"
-      dest_dir="$(dest_for "$TARGET")"
-      do_replace "$TARGET" "$dest_dir"
+      do_replace "$TARGET" "$(dest_for "$TARGET")"
       [[ "$TARGET" == *.plist ]] && patch_plist "$TARGET"
     else
-      # All files
       echo "── Replacing all files ──────────────────────────────────────────────"
       [[ ${#managed_sh[@]} -gt 0 ]] && {
         echo "   Scripts → $SCRIPTS_DEST"
@@ -194,15 +184,11 @@ case "$COMMAND" in
     fi
     ;;
 
-  # ── Remove ─────────────────────────────────────────────────────────────────
   remove)
     if [[ -n "$TARGET" ]]; then
-      # Single file
       echo "── Removing single file: $TARGET ───────────────────────────────────"
-      dest_dir="$(dest_for "$TARGET")"
-      do_remove "$TARGET" "$dest_dir"
+      do_remove "$TARGET" "$(dest_for "$TARGET")"
     else
-      # All files
       echo "── Removing all installed files ─────────────────────────────────────"
       echo "   From $SCRIPTS_DEST"
       for f in "${managed_sh[@]}"; do do_remove "$f" "$SCRIPTS_DEST"; done
@@ -214,10 +200,5 @@ case "$COMMAND" in
 
 esac
 
-# ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
-if $DRY_RUN; then
-  echo "Dry-run complete. Inspect above, then re-run with --run."
-else
-  echo "Done."
-fi
+$DRY_RUN && echo "Dry-run complete. Inspect above, then re-run with --run." || echo "Done."
