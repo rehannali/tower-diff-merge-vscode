@@ -1,112 +1,223 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Destinations ────────────────────────────────────────────────────────────
+# ── Destinations ─────────────────────────────────────────────────────────────
 DEST="$HOME/Library/Application Support/com.fournova.Tower3/CompareTools"
 SCRIPTS_DEST="$DEST/scripts"
+SELF="$(basename "$0")"
 
-# ── Safety: dry-run by default ───────────────────────────────────────────────
+# ── Usage ─────────────────────────────────────────────────────────────────────
+usage() {
+  cat <<EOF
+Usage: bash $SELF [--run] <command> [target]
+
+Commands:
+  install               Move all files to target (default, skips existing)
+  replace               Overwrite all already-installed files
+  replace <file>        Overwrite a single file (e.g. replace vscode.sh)
+  remove                Remove all installed files from target
+  remove <file>         Remove a single installed file
+
+Flags:
+  --run                 Execute for real (default is dry-run)
+
+Examples:
+  bash $SELF                          # dry-run install all
+  bash $SELF --run install            # install all
+  bash $SELF --run replace            # replace all
+  bash $SELF --run replace vscode.sh  # replace one
+  bash $SELF --run remove             # remove all
+  bash $SELF --run remove vscode.sh   # remove one
+EOF
+  exit 0
+}
+
+# ── Argument parsing ──────────────────────────────────────────────────────────
 DRY_RUN=true
-[[ "${1:-}" == "--run" ]] && DRY_RUN=false
+COMMAND="install"
+TARGET=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --run)    DRY_RUN=false; shift ;;
+    --help)   usage ;;
+    install|replace|remove) COMMAND="$1"; shift
+      [[ $# -gt 0 && "$1" != --* ]] && { TARGET="$1"; shift; } ;;
+    *) echo "✗ Unknown argument: $1" >&2; usage ;;
+  esac
+done
 
 if $DRY_RUN; then
-  echo "⚠  Dry-run mode — nothing will be moved. Pass --run to execute."
+  echo "⚠  Dry-run mode — nothing will change. Pass --run to execute."
   echo ""
 fi
 
-# ── Move helper ──────────────────────────────────────────────────────────────
-move_file() {
-  local src="$1"
-  local dest_dir="$2"
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+# Resolve which destination dir a source file belongs to
+dest_for() {
+  local f="$1"
+  [[ "$f" == *.sh ]] && echo "$SCRIPTS_DEST" || echo "$DEST"
+}
+
+do_move() {
+  local src="$1" dest_dir="$2"
+  local dest="$dest_dir/$(basename "$src")"
 
   if [[ ! -f "$src" ]]; then
-    echo "  ✗ missing:        $src" >&2
-    return
+    echo "  ✗ missing source:  $src" >&2; return
   fi
-
-  if [[ -e "$dest_dir/$(basename "$src")" ]]; then
-    echo "  ⚠ already exists: $dest_dir/$(basename "$src") — skipped" >&2
-    return
+  if [[ -e "$dest" ]]; then
+    echo "  ⚠ already exists:  $dest — skipped (use replace)" >&2; return
   fi
 
   if $DRY_RUN; then
-    echo "  → [dry-run] $src  ➜  $dest_dir/"
+    echo "  → [dry-run] move   $src  ➜  $dest_dir/"
   else
     mkdir -p "$dest_dir"
     mv "$src" "$dest_dir/"
-    echo "  ✓ moved: $src  ➜  $dest_dir/"
+    echo "  ✓ moved:           $src  ➜  $dest_dir/"
   fi
 }
 
-# ── Plist patch helper ───────────────────────────────────────────────────────
+do_replace() {
+  local src="$1" dest_dir="$2"
+  local dest="$dest_dir/$(basename "$src")"
+
+  if [[ ! -f "$src" ]]; then
+    echo "  ✗ missing source:  $src" >&2; return
+  fi
+
+  if $DRY_RUN; then
+    local status="new"
+    [[ -e "$dest" ]] && status="overwrite"
+    echo "  → [dry-run] replace ($status)  $src  ➜  $dest_dir/"
+  else
+    mkdir -p "$dest_dir"
+    mv "$src" "$dest_dir/"
+    echo "  ✓ replaced:        $src  ➜  $dest_dir/"
+  fi
+}
+
+do_remove() {
+  local target_file="$1"
+  local dest_dir="$2"
+  local dest="$dest_dir/$(basename "$target_file")"
+
+  if [[ ! -e "$dest" ]]; then
+    echo "  ⚠ not installed:   $dest — skipped" >&2; return
+  fi
+
+  if $DRY_RUN; then
+    echo "  → [dry-run] remove $dest"
+  else
+    rm "$dest"
+    echo "  ✓ removed:         $dest"
+  fi
+}
+
+# ── Plist patch ───────────────────────────────────────────────────────────────
 patch_plist() {
   local plist="$1"
-
-  if [[ ! -f "$plist" ]]; then
-    echo "  ✗ missing: $plist" >&2
-    return
-  fi
+  [[ ! -f "$plist" ]] && { echo "  ✗ missing: $plist" >&2; return; }
 
   echo ""
   echo "── Patching plist script paths ── ($plist)"
 
-  # Find all .sh references currently without scripts/ prefix
   local refs
   refs=$(grep -o '[^>]*\.sh' "$plist" | grep -v 'scripts/' || true)
 
   if [[ -z "$refs" ]]; then
-    echo "  ℹ no .sh references found needing update — already patched or none present"
+    echo "  ℹ paths already up to date — no changes needed"
     return
   fi
 
   while IFS= read -r ref; do
-    local updated="scripts/$ref"
     if $DRY_RUN; then
-      echo "  → [dry-run] plist ref: \"$ref\"  ➜  \"$updated\""
+      echo "  → [dry-run] \"$ref\"  ➜  \"scripts/$ref\""
     else
-      sed -i '' "s|>$ref<|>$updated<|g" "$plist"
-      echo "  ✓ patched: \"$ref\"  ➜  \"$updated\""
+      sed -i '' "s|>$ref<|>scripts/$ref<|g" "$plist"
+      echo "  ✓ patched: \"$ref\"  ➜  \"scripts/$ref\""
     fi
   done <<< "$refs"
 }
 
-# ── Shell scripts → scripts/ subfolder ──────────────────────────────────────
-SELF="$(basename "$0")"
-
-echo "── Shell scripts ── (*.sh → $SCRIPTS_DEST)"
+# ── Collect all managed files ─────────────────────────────────────────────────
 shopt -s nullglob
-sh_files=( *.sh )
-if (( ${#sh_files[@]} == 0 )); then
-  echo "  (none found)"
-else
-  for f in "${sh_files[@]}"; do
-    if [[ "$f" == "$SELF" ]]; then
-      echo "  ⊘ skipped self:   $f"
-      continue
+all_sh=( *.sh )
+all_other=( *.plist )
+
+# Remove self from .sh list
+managed_sh=()
+for f in "${all_sh[@]}"; do
+  [[ "$f" == "$SELF" ]] && { echo "  ⊘ skipped self:    $f"; continue; }
+  managed_sh+=("$f")
+done
+
+all_files=( "${managed_sh[@]}" "${all_other[@]}" )
+
+# ── Command dispatch ──────────────────────────────────────────────────────────
+case "$COMMAND" in
+
+  # ── Install ────────────────────────────────────────────────────────────────
+  install)
+    echo "── Installing all files ─────────────────────────────────────────────"
+    [[ ${#managed_sh[@]} -gt 0 ]] && {
+      echo "   Scripts → $SCRIPTS_DEST"
+      for f in "${managed_sh[@]}"; do do_move "$f" "$SCRIPTS_DEST"; done
+    }
+    patch_plist "CompareTools.plist"
+    echo ""
+    echo "   Other → $DEST"
+    for f in "${all_other[@]}"; do do_move "$f" "$DEST"; done
+    ;;
+
+  # ── Replace ────────────────────────────────────────────────────────────────
+  replace)
+    if [[ -n "$TARGET" ]]; then
+      # Single file
+      echo "── Replacing single file: $TARGET ──────────────────────────────────"
+      dest_dir="$(dest_for "$TARGET")"
+      do_replace "$TARGET" "$dest_dir"
+      [[ "$TARGET" == *.plist ]] && patch_plist "$TARGET"
+    else
+      # All files
+      echo "── Replacing all files ──────────────────────────────────────────────"
+      [[ ${#managed_sh[@]} -gt 0 ]] && {
+        echo "   Scripts → $SCRIPTS_DEST"
+        for f in "${managed_sh[@]}"; do do_replace "$f" "$SCRIPTS_DEST"; done
+      }
+      patch_plist "CompareTools.plist"
+      echo ""
+      echo "   Other → $DEST"
+      for f in "${all_other[@]}"; do do_replace "$f" "$DEST"; done
     fi
-    move_file "$f" "$SCRIPTS_DEST"
-  done
-fi
+    ;;
 
-# ── Patch plist before moving ────────────────────────────────────────────────
-patch_plist "CompareTools.plist"
+  # ── Remove ─────────────────────────────────────────────────────────────────
+  remove)
+    if [[ -n "$TARGET" ]]; then
+      # Single file
+      echo "── Removing single file: $TARGET ───────────────────────────────────"
+      dest_dir="$(dest_for "$TARGET")"
+      do_remove "$TARGET" "$dest_dir"
+    else
+      # All files
+      echo "── Removing all installed files ─────────────────────────────────────"
+      echo "   From $SCRIPTS_DEST"
+      for f in "${managed_sh[@]}"; do do_remove "$f" "$SCRIPTS_DEST"; done
+      echo ""
+      echo "   From $DEST"
+      for f in "${all_other[@]}"; do do_remove "$f" "$DEST"; done
+    fi
+    ;;
 
-# ── Plist + other files → root CompareTools folder ──────────────────────────
-echo ""
-echo "── Other files ── (*.plist → $DEST)"
-other_files=( *.plist )
-if (( ${#other_files[@]} == 0 )); then
-  echo "  (none found)"
-else
-  for f in "${other_files[@]}"; do
-    move_file "$f" "$DEST"
-  done
-fi
+esac
 
-# ── Summary ──────────────────────────────────────────────────────────────────
+# ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 if $DRY_RUN; then
-  echo "Dry-run complete. Inspect the output above, then re-run with --run."
+  echo "Dry-run complete. Inspect above, then re-run with --run."
 else
   echo "Done."
 fi
