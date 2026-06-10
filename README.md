@@ -22,6 +22,10 @@ $ bash install.sh
 
 # Execute once you're happy
 $ bash install.sh --run
+
+# For Help and see other menus
+$ bash install.sh --help
+Usage: bash install.sh [--run] <command> [target]
 ```
 
 -   Then restart Tower3 app
