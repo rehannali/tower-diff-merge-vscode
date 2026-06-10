@@ -48,9 +48,9 @@ if [ -n "$MERGING" ]; then
 	sleep 1 # required to create different modification timestamp
 	touch "$BACKUP"
 
-	"$CMD" --wait "$MERGE"
+	"$CMD" --new-window --wait "$MERGE"
 else
-	"$CMD" --wait --diff "$LOCAL" "$REMOTE"
+	"$CMD" --new-window --wait --diff "$LOCAL" "$REMOTE"
 fi
 
 if [ -n "$MERGING" ]; then
