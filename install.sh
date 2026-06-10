@@ -39,6 +39,8 @@ move_file() {
 }
 
 # ── Shell scripts → scripts/ subfolder ──────────────────────────────────────
+SELF="$(basename "$0")"
+
 echo "── Shell scripts ── (*.sh → $SCRIPTS_DEST)"
 shopt -s nullglob
 sh_files=( *.sh )
@@ -46,6 +48,10 @@ if (( ${#sh_files[@]} == 0 )); then
   echo "  (none found)"
 else
   for f in "${sh_files[@]}"; do
+    if [[ "$f" == "$SELF" ]]; then
+      echo "  ⊘ skipped self:   $f"
+      continue
+    fi
     move_file "$f" "$SCRIPTS_DEST"
   done
 fi
