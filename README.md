@@ -15,9 +15,13 @@
 ---
 
 ```bash
-$ git clone https://github.com/SushiFu/tower-diff-merge-vscode.git
+$ git clone https://github.com/rehannali/tower-diff-merge-vscode.git
 $ cd tower-diff-merge-vscode
-$ ./install.sh
+# Preview first (safe, nothing moves)
+$ bash install.sh
+
+# Execute once you're happy
+$ bash install.sh --run
 ```
 
 -   Then restart Tower3 app
