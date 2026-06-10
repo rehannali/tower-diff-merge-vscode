@@ -38,6 +38,38 @@ move_file() {
   fi
 }
 
+# ── Plist patch helper ───────────────────────────────────────────────────────
+patch_plist() {
+  local plist="$1"
+
+  if [[ ! -f "$plist" ]]; then
+    echo "  ✗ missing: $plist" >&2
+    return
+  fi
+
+  echo ""
+  echo "── Patching plist script paths ── ($plist)"
+
+  # Find all .sh references currently without scripts/ prefix
+  local refs
+  refs=$(grep -o '[^>]*\.sh' "$plist" | grep -v 'scripts/' || true)
+
+  if [[ -z "$refs" ]]; then
+    echo "  ℹ no .sh references found needing update — already patched or none present"
+    return
+  fi
+
+  while IFS= read -r ref; do
+    local updated="scripts/$ref"
+    if $DRY_RUN; then
+      echo "  → [dry-run] plist ref: \"$ref\"  ➜  \"$updated\""
+    else
+      sed -i '' "s|>$ref<|>$updated<|g" "$plist"
+      echo "  ✓ patched: \"$ref\"  ➜  \"$updated\""
+    fi
+  done <<< "$refs"
+}
+
 # ── Shell scripts → scripts/ subfolder ──────────────────────────────────────
 SELF="$(basename "$0")"
 
@@ -56,10 +88,13 @@ else
   done
 fi
 
-# ── All other project files → root CompareTools folder ──────────────────────
+# ── Patch plist before moving ────────────────────────────────────────────────
+patch_plist "CompareTools.plist"
+
+# ── Plist + other files → root CompareTools folder ──────────────────────────
 echo ""
-echo "── Other files ── (*.plist, etc. → $DEST)"
-other_files=( *.plist )          # extend this array for other types if needed
+echo "── Other files ── (*.plist → $DEST)"
+other_files=( *.plist )
 if (( ${#other_files[@]} == 0 )); then
   echo "  (none found)"
 else
