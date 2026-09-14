@@ -2,7 +2,9 @@
 set -euo pipefail
 
 # ── Destinations ─────────────────────────────────────────────────────────────
-DEST="$HOME/Library/Application Support/com.fournova.Tower3/CompareTools"
+# TOWER_COMPARE_TOOLS_DIR is primarily useful for testing, while the default is
+# the location Tower scans for user-provided tool integrations.
+DEST="${TOWER_COMPARE_TOOLS_DIR:-$HOME/Library/Application Support/com.fournova.Tower3/CompareTools}"
 SCRIPTS_DEST="$DEST/scripts"
 SELF="$(basename "$0")"
 
@@ -59,6 +61,26 @@ dest_for() {
   [[ "$f" == *.sh ]] && echo "$SCRIPTS_DEST" || echo "$DEST"
 }
 
+is_editor_launcher() {
+  case "$1" in
+    vscode.sh|vscode-insiders.sh|vscodium.sh) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+ensure_executable() {
+  local dest="$1"
+
+  [[ "$dest" == *.sh && -e "$dest" && ! -x "$dest" ]] || return 0
+
+  if $DRY_RUN; then
+    echo "  → [dry-run] chmod +x $dest"
+  else
+    chmod +x "$dest"
+    echo "  ✓ executable:      $dest"
+  fi
+}
+
 do_copy() {
   local src="$1" dest_dir="$2"
   local dest="$dest_dir/$(basename "$src")"
@@ -67,7 +89,11 @@ do_copy() {
     echo "  ✗ missing source:  $src" >&2; return
   fi
   if [[ -e "$dest" ]]; then
-    echo "  ⚠ already exists:  $dest — skipped (use replace)" >&2; return
+    echo "  ⚠ already exists:  $dest — skipped (use replace)" >&2
+    # `install` deliberately does not overwrite an existing integration, but
+    # it must still repair a non-executable launcher from older installs.
+    ensure_executable "$dest"
+    return
   fi
 
   if $DRY_RUN; then
@@ -75,6 +101,7 @@ do_copy() {
   else
     mkdir -p "$dest_dir"
     cp "$src" "$dest_dir/"
+    ensure_executable "$dest"
     echo "  ✓ copied:          $src  ➜  $dest_dir/"
   fi
 }
@@ -94,6 +121,7 @@ do_replace() {
   else
     mkdir -p "$dest_dir"
     cp "$src" "$dest_dir/"
+    ensure_executable "$dest"
     echo "  ✓ replaced:        $src  ➜  $dest_dir/"
   fi
 }
@@ -169,6 +197,11 @@ case "$COMMAND" in
   replace)
     if [[ -n "$TARGET" ]]; then
       echo "── Replacing single file: $TARGET ──────────────────────────────────"
+      if is_editor_launcher "$TARGET"; then
+        # Editor-specific wrappers source this file, so keep a single-wrapper
+        # upgrade functional for installations that predate the shared helper.
+        do_replace "vscode-common.sh" "$SCRIPTS_DEST"
+      fi
       do_replace "$TARGET" "$(dest_for "$TARGET")"
       [[ "$TARGET" == *.plist ]] && patch_plist "$TARGET"
     else
