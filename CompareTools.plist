@@ -8,9 +8,9 @@
             <key>ApplicationName</key>
             <string>Visual Studio Code</string>
             <key>DisplayName</key>
-            <string>Visual Studio Code</string>
+            <string>Visual Studio Code (Custom Integration)</string>
             <key>LaunchScript</key>
-            <string>vscode.sh</string>
+            <string>scripts/vscode.sh</string>
             <key>Identifier</key>
             <string>code</string>
             <key>SupportsMergeTool</key>
@@ -24,9 +24,9 @@
             <key>ApplicationName</key>
             <string>Visual Studio Code Insiders</string>
             <key>DisplayName</key>
-            <string>Visual Studio Code Insiders</string>
+            <string>Visual Studio Code Insiders (Custom Integration)</string>
             <key>LaunchScript</key>
-            <string>vscode-insiders.sh</string>
+            <string>scripts/vscode-insiders.sh</string>
             <key>Identifier</key>
             <string>code-insiders</string>
             <key>SupportsMergeTool</key>
@@ -36,13 +36,13 @@
         </dict>
         <dict>
             <key>ApplicationIdentifier</key>
-            <string>com.visualstudio.code.oss</string>
+            <string>com.vscodium</string>
             <key>ApplicationName</key>
             <string>VSCodium</string>
             <key>DisplayName</key>
-            <string>VSCodium</string>
+            <string>VSCodium (Custom Integration)</string>
             <key>LaunchScript</key>
-            <string>vscodium.sh</string>
+            <string>scripts/vscodium.sh</string>
             <key>Identifier</key>
             <string>codium</string>
             <key>SupportsMergeTool</key>
