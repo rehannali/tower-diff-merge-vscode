@@ -1,63 +1,7 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
-LOCAL="$1"
-REMOTE="$2"
+script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=vscode-common.sh
+source "$script_dir/vscode-common.sh"
 
-# Sanitize LOCAL path
-if [[ ! "$LOCAL" =~ ^/ ]]; then
-	LOCAL=$(echo "$LOCAL" | sed -e 's/^\.\///')
-	LOCAL="$PWD/$LOCAL"
-fi
-
-# Sanitize REMOTE path
-if [[ ! "$REMOTE" =~ ^/ ]]; then
-	REMOTE=$(echo "$REMOTE" | sed -e 's/^\.\///')
-	REMOTE="$PWD/$REMOTE"
-fi
-
-MERGING="$4"
-BACKUP="/tmp/$(date +"%Y%d%m%H%M%S")"
-
-CMD=$(which code-insiders)
-
-if [ ! $CMD ] >/dev/null; then
-	if [ -e '/usr/local/bin/code-insiders' ]; then
-		CMD='/usr/local/bin/code-insiders'
-	fi
-fi
-
-if [ ! -x "$CMD" ]; then
-	echo "Visual Studio Code command line tool 'code-insiders' could not be found. Please make sure it has been installed in /usr/local/bin/." >&2
-	exit 128
-fi
-
-if [ -n "$MERGING" ]; then
-	MERGE="$4"
-
-	# Sanitize MERGE path
-	if [[ ! "$MERGE" =~ ^/ ]]; then
-		MERGE=$(echo "$MERGE" | sed -e 's/^\.\///')
-		MERGE="$PWD/$MERGE"
-
-		if [ ! -f "$MERGE" ]; then
-			# For conflict "Both Added", Git does not pass the merge param correctly in current versions
-			MERGE=$(echo "$LOCAL" | sed -e 's/\.LOCAL\.[0-9]*//')
-		fi
-	fi
-
-	sleep 1 # required to create different modification timestamp
-	touch "$BACKUP"
-
-	"$CMD" --new-window --wait "$MERGE"
-else
-	"$CMD" --new-window --wait --diff "$LOCAL" "$REMOTE"
-fi
-
-if [ -n "$MERGING" ]; then
-	# Check if the merged file has changed
-	if [ "$MERGE" -ot "$BACKUP" ]; then
-		exit 1
-	fi
-fi
-
-exit 0
+tower_vscode_launch "com.microsoft.VSCodeInsiders" "code-insiders" "Visual Studio Code Insiders" "$@"
